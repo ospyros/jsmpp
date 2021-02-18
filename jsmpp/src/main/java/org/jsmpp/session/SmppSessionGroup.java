@@ -2,6 +2,9 @@ package org.jsmpp.session;
 
 import org.jsmpp.PDUReader;
 import org.jsmpp.PDUSender;
+import org.jsmpp.session.BindParameter;
+import org.jsmpp.session.PDUProcessTask;
+import org.jsmpp.session.SMPPSession;
 import org.jsmpp.session.connection.ConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +13,6 @@ import java.io.IOException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * A group of {@link SMPPSession}s sharing the same ThreadPoolExecutor for
@@ -20,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class SmppSessionGroup {
     private static final Logger logger = LoggerFactory.getLogger(SmppSessionGroup.class);
+    private static final long DEFAULT_SINGLE_TASK_TIMEOUT_MILLIS = 500;
 
     private Object metadata;
     private String name;
@@ -50,6 +53,14 @@ public class SmppSessionGroup {
                                      ConnectionFactory connFactory) throws IOException {
         return new SMPPSession(host, port, bindParam, pduSender,
                 pduReader, this.pduExecutor, connFactory);
+    }
+
+    /**
+     * Shutdown this group (i.e. its task executor) waiting at most
+     * 1000 + 500 *  (queued tasks count / core pool size) milliseconds.
+     */
+    public void shutdown() {
+        shutdown(DEFAULT_SINGLE_TASK_TIMEOUT_MILLIS);
     }
 
     /**
