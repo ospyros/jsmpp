@@ -15,9 +15,13 @@
 package org.jsmpp.session;
 
 import java.io.IOException;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import org.jsmpp.SMPPConstant;
 import org.jsmpp.bean.Command;
+import org.jsmpp.extra.QueueMaxException;
 import org.jsmpp.util.HexUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -123,6 +127,28 @@ public class PDUProcessTask implements Runnable {
         } catch (IOException e) {
             onIOExceptionTask.run();
         }
+    }
+
+    public static final RejectedExecutionHandler defaultRejectedExecutionHandler(final int queueCapacity) {
+        return new RejectedExecutionHandler() {
+            @Override
+            public void rejectedExecution(final Runnable runnable, final ThreadPoolExecutor executor) {
+                logger.info("Receiving queue is full, please increasing queue capacity, and/or let other side obey the window size");
+                Command pduHeader = ((PDUProcessTask) runnable).getPduHeader();
+                if ((pduHeader.getCommandId() & SMPPConstant.MASK_CID_RESP) == SMPPConstant.MASK_CID_RESP) {
+                    try {
+                        boolean success = executor.getQueue().offer(runnable, 60000, TimeUnit.MILLISECONDS);
+                        if (!success) {
+                            logger.warn("Offer to queue failed for {}", pduHeader);
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                } else {
+                    throw new QueueMaxException("Queue capacity " + queueCapacity + " exceeded");
+                }
+            }
+        };
     }
 
     public Command getPduHeader() {
