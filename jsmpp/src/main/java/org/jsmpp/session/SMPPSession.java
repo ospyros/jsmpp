@@ -129,13 +129,24 @@ public class SMPPSession extends AbstractSession implements ClientSession {
                 connFactory);
     }
 
+    /**
+     * Constructor to allow multiple sessions to use a common pdu {@link ThreadPoolExecutor}.
+     * @param pduExecutor an externally managed, shared with other sessions, {@link ThreadPoolExecutor}.
+     */
     public SMPPSession(PDUSender pduSender, PDUReader pduReader,
+                       ThreadPoolExecutor pduExecutor,
                        ConnectionFactory connFactory) {
         super(pduSender);
         this.pduReader = pduReader;
         this.connFactory = connFactory;
-        this.pduExecutor = null;
+        this.pduExecutor = pduExecutor;
     }
+
+    public SMPPSession(PDUSender pduSender, PDUReader pduReader,
+                       ConnectionFactory connFactory) {
+        this(pduSender, pduReader, null, connFactory);
+    }
+
 
     public SMPPSession(String host, int port, BindParameter bindParam,
                        PDUSender pduSender, PDUReader pduReader,

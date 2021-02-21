@@ -1,18 +1,13 @@
 package org.jsmpp.session;
 
-import org.jsmpp.PDUReader;
-import org.jsmpp.PDUSender;
-import org.jsmpp.session.BindParameter;
-import org.jsmpp.session.PDUProcessTask;
-import org.jsmpp.session.SMPPSession;
+import org.jsmpp.*;
 import org.jsmpp.session.connection.ConnectionFactory;
+import org.jsmpp.util.DefaultComposer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * A group of {@link SMPPSession}s sharing the same ThreadPoolExecutor for
@@ -22,16 +17,36 @@ import java.util.concurrent.TimeUnit;
  */
 public class SmppSessionGroup {
     private static final Logger logger = LoggerFactory.getLogger(SmppSessionGroup.class);
-    private static final long DEFAULT_SINGLE_TASK_TIMEOUT_MILLIS = 500;
+    private static final int DEFAULT_SINGLE_TASK_TIMEOUT_MILLIS = 500;
+    private static final int DEFAULT_PDU_PROCESSOR_CORE_DEGREE = 1;
+    private static final int DEFAULT_PDU_PROCESSOR_MAX_DEGREE = 8;
+    private static final long DEFAULT_PDU_PROCESSOR_KEPP_ALIVE_MILLIS = 200;
+    private static final int DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY = 50;
 
+    private String id;
     private Object metadata;
-    private String name;
-    private int pduProcessorCoreDegree;
-    private int pduProcessorMaxDegree;
-    private int pduProcessorKeepAliveMillis;
-    private int pduProccessorQueueCapacity;
+    private int pduProcessorCoreDegree = DEFAULT_PDU_PROCESSOR_CORE_DEGREE;
+    private int pduProcessorMaxDegree = DEFAULT_PDU_PROCESSOR_MAX_DEGREE;
+    private long pduProcessorKeepAliveMillis = DEFAULT_PDU_PROCESSOR_KEPP_ALIVE_MILLIS;
+    private int pduProccessorQueueCapacity = DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY;
     private final ThreadPoolExecutor pduExecutor;
 
+    /**
+     * Create a new session group with a shared {@link PDUProcessTask} executor
+     * sized according to the default (really modest) parameters.
+     * <p>
+     * This constructor is mostly used as a fallback option when no configuration
+     * is found for a group and in general should be avoided.
+     */
+    public SmppSessionGroup() {
+        this.pduExecutor = new ThreadPoolExecutor(
+                DEFAULT_PDU_PROCESSOR_CORE_DEGREE,
+                DEFAULT_PDU_PROCESSOR_MAX_DEGREE,
+                DEFAULT_PDU_PROCESSOR_KEPP_ALIVE_MILLIS,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<Runnable>(DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY),
+                PDUProcessTask.defaultRejectedExecutionHandler(DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY));
+    }
 
     /**
      * Create a new session group with a shared {@link PDUProcessTask} executor
@@ -39,6 +54,10 @@ public class SmppSessionGroup {
      */
     public SmppSessionGroup(int pduProcessorCoreDegree, int pduProcessorMaxDegree,
                             int pduProccessorQueueCapacity) {
+        this.pduProcessorCoreDegree = pduProcessorCoreDegree;
+        this.pduProcessorMaxDegree = pduProcessorMaxDegree;
+        this.pduProccessorQueueCapacity = pduProccessorQueueCapacity;
+
         this.pduExecutor = new ThreadPoolExecutor(
                 pduProcessorCoreDegree,
                 pduProcessorMaxDegree,
@@ -46,6 +65,19 @@ public class SmppSessionGroup {
                 TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(pduProccessorQueueCapacity),
                 PDUProcessTask.defaultRejectedExecutionHandler(pduProccessorQueueCapacity));
+    }
+
+    public SMPPSession createSession(ConnectionFactory connFactory) {
+        return new SMPPSession(
+                new SynchronizedPDUSender(new DefaultPDUSender(new DefaultComposer())),
+                new DefaultPDUReader(),
+                this.pduExecutor,
+                connFactory);
+    }
+
+    public SMPPSession createSession(PDUSender pduSender, PDUReader pduReader,
+                                     ConnectionFactory connFactory) {
+        return new SMPPSession(pduSender, pduReader, this.pduExecutor, connFactory);
     }
 
     public SMPPSession createSession(String host, int port, BindParameter bindParam,
@@ -74,12 +106,12 @@ public class SmppSessionGroup {
         logger.debug("Shutting down session group executor");
         pduExecutor.shutdown();
         try {
-            pduExecutor.awaitTermination( 1000 +
-                    singleTaskTimeoutMillis *
-                    (pduExecutor.getQueue().size() / Math.max(pduExecutor.getCorePoolSize(), 1)),
+            pduExecutor.awaitTermination(1000 +
+                            singleTaskTimeoutMillis *
+                                    (pduExecutor.getQueue().size() / Math.max(pduExecutor.getCorePoolSize(), 1)),
                     TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            logger.warn("Session group " + name + " interrupted while waiting for PDU executor pool to finish");
+            logger.warn("Session group " + id + " interrupted while waiting for PDU executor pool to finish");
             Thread.currentThread().interrupt();
         }
     }
@@ -92,11 +124,11 @@ public class SmppSessionGroup {
         this.metadata = metadata;
     }
 
-    public String getName() {
-        return name;
+    public String getId() {
+        return id;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setId(String id) {
+        this.id = id;
     }
 }
