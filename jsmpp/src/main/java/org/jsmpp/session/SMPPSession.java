@@ -129,13 +129,24 @@ public class SMPPSession extends AbstractSession implements ClientSession {
                 connFactory);
     }
 
+    /**
+     * Constructor to allow multiple sessions to use a common pdu {@link ThreadPoolExecutor}.
+     * @param pduExecutor an externally managed, shared with other sessions, {@link ThreadPoolExecutor}.
+     */
     public SMPPSession(PDUSender pduSender, PDUReader pduReader,
+                       ThreadPoolExecutor pduExecutor,
                        ConnectionFactory connFactory) {
         super(pduSender);
         this.pduReader = pduReader;
         this.connFactory = connFactory;
-        this.pduExecutor = null;
+        this.pduExecutor = pduExecutor;
     }
+
+    public SMPPSession(PDUSender pduSender, PDUReader pduReader,
+                       ConnectionFactory connFactory) {
+        this(pduSender, pduReader, null, connFactory);
+    }
+
 
     public SMPPSession(String host, int port, BindParameter bindParam,
                        PDUSender pduSender, PDUReader pduReader,
@@ -617,7 +628,6 @@ public class SMPPSession extends AbstractSession implements ClientSession {
      * @author uudashr
      */
     private class PDUReaderWorker extends Thread {
-        private final boolean isSessionReceivable;
         private final boolean sharedExecutor;
         private final int pduProcessorDegree;
 
@@ -634,7 +644,6 @@ public class SMPPSession extends AbstractSession implements ClientSession {
 
         private PDUReaderWorker(final ThreadPoolExecutor pduExecutor) {
             super("PDUReaderWorker-" + getSessionId());
-            this.isSessionReceivable = true;
             this.sharedExecutor = true;
             this.pduProcessorDegree = 0; //Will never use it anyway
             this.pduExecutor = pduExecutor;
@@ -643,14 +652,11 @@ public class SMPPSession extends AbstractSession implements ClientSession {
         private PDUReaderWorker(final int queueCapacity, final int pduProcessorDegree, final BindType bindType) {
             super("PDUReaderWorker-" + getSessionId());
             this.sharedExecutor = false;
-            this.isSessionReceivable = bindType.isReceivable();
             this.pduProcessorDegree = pduProcessorDegree;
-            if (isSessionReceivable) {
-                pduExecutor = new ThreadPoolExecutor(1, 1,
-                        0L, TimeUnit.MILLISECONDS,
-                        new LinkedBlockingQueue<Runnable>(queueCapacity),
-                        PDUProcessTask.defaultRejectedExecutionHandler(queueCapacity));
-            }
+            pduExecutor = new ThreadPoolExecutor(1, 1,
+                    0L, TimeUnit.MILLISECONDS,
+                    new LinkedBlockingQueue<Runnable>(queueCapacity),
+                    PDUProcessTask.defaultRejectedExecutionHandler(queueCapacity));
         }
 
         @Override
@@ -660,7 +666,7 @@ public class SMPPSession extends AbstractSession implements ClientSession {
                 readPDU();
             }
             close();
-            if (isSessionReceivable && !sharedExecutor) {
+            if (!sharedExecutor) {
                 pduExecutor.shutdown();
                 try {
                     pduExecutor.awaitTermination(getTransactionTimer(),
@@ -686,11 +692,7 @@ public class SMPPSession extends AbstractSession implements ClientSession {
                  * the code on event might take non-short time, so we need to
                  * process it in an asynchronous manner.
                  */
-                if (isSessionReceivable) {
-                    pduExecutor.execute(task);
-                } else {
-                    task.run();
-                }
+                pduExecutor.execute(task);
             } catch (QueueMaxException e) {
                 logger.info("Notify other side to throttle: {} ({} threads active)", e.getMessage(),
                         pduExecutor.getActiveCount());
@@ -731,7 +733,7 @@ public class SMPPSession extends AbstractSession implements ClientSession {
         }
 
         public void onStateBound() {
-            if (isSessionReceivable && !sharedExecutor) {
+            if (!sharedExecutor) {
                 logger.info("Changing processor degree to {}", getPduProcessorDegree());
                 pduExecutor.setMaximumPoolSize(getPduProcessorDegree());
                 pduExecutor.setCorePoolSize(getPduProcessorDegree());
