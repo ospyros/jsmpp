@@ -43,7 +43,8 @@ public class SMPPSessionGroup {
             do {
                 try {
                     Thread.sleep(10000);
-                    logger.info("Executor active count is {}, completedTaskCount is {}, queue size is {}", executor.getActiveCount(),
+                    logger.info("Executor active count is {}, completedTaskCount is {}, queue size is {}",
+                            executor.getActiveCount(),
                             executor.getCompletedTaskCount(),
                             executor.getQueue().size());
                 } catch(InterruptedException ex) {
@@ -68,9 +69,11 @@ public class SMPPSessionGroup {
                 TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY),
                 PDUProcessTask.defaultRejectedExecutionHandler(DEFAULT_PDU_PROCESSOR_QUEUE_CAPACITY));
-        statsLogger.executor = pduExecutor;
-        statsThread.setDaemon(true);
-        statsThread.start();
+        if (logger.isDebugEnabled()) {
+            statsLogger.executor = pduExecutor;
+            statsThread.setDaemon(true);
+            statsThread.start();
+        }
     }
 
     /**
@@ -90,9 +93,11 @@ public class SMPPSessionGroup {
                 TimeUnit.MILLISECONDS,
                 new LinkedBlockingQueue<Runnable>(pduProccessorQueueCapacity),
                 PDUProcessTask.defaultRejectedExecutionHandler(pduProccessorQueueCapacity));
-        statsLogger.executor = pduExecutor;
-        statsThread.setDaemon(true);
-        statsThread.start();
+        if (logger.isDebugEnabled()) {
+            statsLogger.executor = pduExecutor;
+            statsThread.setDaemon(true);
+            statsThread.start();
+        }
     }
 
     public SMPPSession createSession(ConnectionFactory connFactory) {
