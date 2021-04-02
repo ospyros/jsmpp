@@ -16,6 +16,9 @@ package org.jsmpp.session;
 
 import org.jsmpp.extra.SessionState;
 import org.jsmpp.session.state.SMPPServerSessionState;
+import org.jsmpp.session.state.SMPPSessionState;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author uudashr
@@ -52,11 +55,43 @@ public class SMPPServerSessionContext extends AbstractSessionContext {
         }
     }
     
-    public synchronized SMPPServerSessionState getStateProcessor() {
-        return stateProcessor;
+    public SMPPServerSessionState getStateProcessor() {
+        lock();
+        try {
+            return stateProcessor;
+        } finally {
+            unlock();
+        }
     }
-    
-    public synchronized SessionState getSessionState() {
-        return stateProcessor.getSessionState();
+
+    public SMPPServerSessionState getStateProcessor(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return null;
+        }
+        try {
+            return stateProcessor;
+        } finally {
+            unlock();
+        }
+    }
+
+    public SessionState getSessionState(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return null;
+        }
+        try {
+            return stateProcessor.getSessionState();
+        } finally {
+            unlock();
+        }
+    }
+
+    public SessionState getSessionState() {
+        lock();
+        try {
+            return stateProcessor.getSessionState();
+        } finally {
+            unlock();
+        }
     }
 }

@@ -16,6 +16,9 @@ package org.jsmpp.session;
 
 import org.jsmpp.extra.SessionState;
 import org.jsmpp.session.state.SMPPOutboundServerSessionState;
+import org.jsmpp.session.state.SMPPSessionState;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author pmoerenhout
@@ -29,17 +32,66 @@ class OutboundSMPPServerSessionContext extends AbstractSessionContext {
         super(sessionStateListener);
         this.smppSession = smppSession;
     }
-    
-    public synchronized SMPPOutboundServerSessionState getStateProcessor() {
-        return stateProcessor;
-    }
-    
-    public synchronized SessionState getSessionState() {
-        return stateProcessor.getSessionState();
+
+    public SMPPOutboundServerSessionState getStateProcessor() {
+        lock();
+        try {
+            return stateProcessor;
+        } finally {
+            unlock();
+        }
     }
 
-    public synchronized void outbind() {
-        changeState(SessionState.OUTBOUND);
+    public SMPPOutboundServerSessionState getStateProcessor(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return null;
+        }
+        try {
+            return stateProcessor;
+        } finally {
+            unlock();
+        }
+    }
+
+    public SessionState getSessionState(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return null;
+        }
+        try {
+            return stateProcessor.getSessionState();
+        } finally {
+            unlock();
+        }
+    }
+
+    public SessionState getSessionState() {
+        lock();
+        try {
+            return stateProcessor.getSessionState();
+        } finally {
+            unlock();
+        }
+    }
+
+    public void outbind() {
+        lock();
+        try {
+            changeState(SessionState.OUTBOUND);
+        } finally {
+            unlock();
+        }
+    }
+
+    public boolean outbind(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return false;
+        }
+        try {
+            changeState(SessionState.OUTBOUND);
+        } finally {
+            unlock();
+        }
+        return true;
     }
 
     @Override

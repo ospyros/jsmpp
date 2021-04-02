@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jsmpp.InvalidResponseException;
@@ -253,8 +254,15 @@ public abstract class AbstractSession implements Session {
         }
 
         if (!sessionState.equals(SessionState.CLOSED)) {
-            logger.debug("Close session context {} in state {}", sessionId, sessionState);
-            ctx.close();
+            logger.debug("Attempting to close session context {} in state {}", sessionId, sessionState);
+            try {
+                if (!ctx.close(transactionTimer, TimeUnit.MILLISECONDS)) {
+                    logger.debug("Timeout waiting to close session context {} in state {}", sessionId, sessionState);
+                }
+            } catch (InterruptedException ex) {
+                logger.debug("Interrupted while waiting to close session.");
+
+            }
         }
     }
 

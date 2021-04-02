@@ -125,15 +125,8 @@ public class PDUProcessTask implements Runnable {
             	sessionContext.getStateProcessor().processUnknownCid(pduHeader, pdu, responseHandler);
             }
         } catch (IOException e) {
-            try {
-                onIOExceptionTask.run();
-            } catch(Throwable t) {
-                logger.error("Unexpected throwable onIOExceptionTask", t);
-            }
-        } catch (Throwable e) {
-            logger.error("Unexpected throwable while processing pdu", e);
-
-        };
+            onIOExceptionTask.run();
+        }
     }
 
     public static final RejectedExecutionHandler defaultRejectedExecutionHandler(final int queueCapacity) {

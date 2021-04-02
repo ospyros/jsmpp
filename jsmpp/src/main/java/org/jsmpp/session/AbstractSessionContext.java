@@ -14,13 +14,15 @@
  */
 package org.jsmpp.session;
 
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.List;
-
 import org.jsmpp.bean.BindType;
 import org.jsmpp.extra.SessionState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @author uudashr
@@ -30,7 +32,8 @@ public abstract class AbstractSessionContext implements SessionContext {
     private static final Logger logger = LoggerFactory.getLogger(AbstractSessionContext.class);
     private long lastActivityTimestamp;
     private List<SessionStateListener> sessionStateListeners = new CopyOnWriteArrayList<SessionStateListener>();
-    
+    private final ReentrantLock lock = new ReentrantLock();
+
     public AbstractSessionContext() {
     }
     
@@ -38,13 +41,65 @@ public abstract class AbstractSessionContext implements SessionContext {
         sessionStateListeners.add(sessionStateListener);
     }
 
-    @Override
-    public synchronized void open() {
-        changeState(SessionState.OPEN);
+    protected boolean lock(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        return lock.tryLock(timeout, timeUnit);
+    }
+
+    protected final void lock () {
+        lock.lock();
+    }
+
+    protected final void unlock() {
+        lock.unlock();
     }
 
     @Override
-    public synchronized void bound(BindType bindType) {
+    public void open() {
+        lock();
+        try {
+            changeState(SessionState.OPEN);
+        } finally {
+            unlock();
+        }
+    }
+
+    @Override
+    public boolean open(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return false;
+        }
+        try {
+            changeState(SessionState.OPEN);
+        } finally {
+            unlock();
+        }
+        return true;
+    }
+
+    @Override
+    public void bound(BindType bindType) {
+        lock();
+        try {
+            doBound(bindType);
+        } finally {
+            unlock();
+        }
+    }
+
+    @Override
+    public boolean bound(long timeout, TimeUnit timeUnit, BindType bindType) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return false;
+        }
+        try {
+            doBound(bindType);
+        } finally {
+            unlock();
+        }
+        return true;
+    }
+
+    private void doBound(BindType bindType) {
         if (bindType.equals(BindType.BIND_TX)) {
             changeState(SessionState.BOUND_TX);
         } else if (bindType.equals(BindType.BIND_RX)) {
@@ -57,15 +112,59 @@ public abstract class AbstractSessionContext implements SessionContext {
     }
 
     @Override
-    public synchronized void unbound() {
+    public void unbound() {
+        lock();  // block until condition holds
+        try {
+            doUnbound();
+        } finally {
+            unlock();
+        }
+    }
+
+    @Override
+    public boolean unbound(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return false;
+        }
+        try {
+            doUnbound();
+        } finally {
+            unlock();
+        }
+        return true;
+    }
+
+    private void doUnbound() {
         changeState(SessionState.UNBOUND);
     }
 
     @Override
-    public synchronized void close() {
+    public void close() {
+        lock();  // block until condition holds
+        try {
+            doClose();
+        } finally {
+            unlock();
+        }
+    }
+
+    @Override
+    public boolean close(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        if (!lock(timeout, timeUnit)) {
+            return false;
+        }
+        try {
+            doClose();
+        } finally {
+            unlock();
+        }
+        return true;
+    }
+
+    private void doClose() {
         changeState(SessionState.CLOSED);
     }
-    
+
     public void addSessionStateListener(SessionStateListener listener) {
         sessionStateListeners.add(listener);
     }
